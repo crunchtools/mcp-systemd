@@ -6,4 +6,4 @@ justification = "Claude Code project instructions for AI assistant orientation"
 [[exceptions]]
 check = "primitive_obsession"
 path = "src/mcp_systemd_crunchtools/__init__.py"
-justification = "Port 8024 is the assigned port for this MCP server"
+justification = "Port 8022 is the assigned port for this MCP server"

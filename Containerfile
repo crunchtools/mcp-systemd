@@ -29,5 +29,5 @@ COPY --from=builder /app/venv /app/venv
 COPY --from=builder /staging/usr/ /usr/
 ENV PATH="/app/venv/bin:$PATH"
 
-EXPOSE 8024
+EXPOSE 8022
 ENTRYPOINT ["python", "-m", "mcp_systemd_crunchtools"]

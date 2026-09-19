@@ -152,7 +152,7 @@ Every code change must pass through these gates in order:
 | Python module | `mcp_systemd_crunchtools` |
 | Container image | `quay.io/crunchtools/mcp-systemd` |
 | systemd service | `mcp-systemd.service` |
-| HTTP port | 8024 |
+| HTTP port | 8022 |
 | License | AGPL-3.0-or-later |
 
 ---

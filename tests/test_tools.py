@@ -1,6 +1,8 @@
 """Mocked tests for every tool the server registers."""
 
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,22 @@ async def test_tool_count() -> None:
     """Every registered tool is accounted for — update this when adding tools."""
     tools = await server.mcp.list_tools()
     assert len(tools) == EXPECTED_TOOL_COUNT
+
+
+def test_module_is_executable() -> None:
+    """`python -m mcp_systemd_crunchtools` must work — it is the container ENTRYPOINT.
+
+    Importing the package is not enough: a missing __main__.py imports fine and
+    then fails only at container start.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "mcp_systemd_crunchtools", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--transport" in result.stdout
 
 
 @pytest.mark.asyncio
