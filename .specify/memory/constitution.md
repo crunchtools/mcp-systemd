@@ -19,6 +19,9 @@ Every change MUST preserve all five security layers. No exceptions.
 **Layer 1 — Credential Protection:**
 - This server uses D-Bus system bus socket file permissions for authentication — no API tokens
 - Socket path loaded from `DBUS_SYSTEM_BUS_SOCKET` (default `/run/dbus/system_bus_socket`)
+- There are no Pydantic `SecretStr` fields today because the server holds no secret. If a
+  credential is ever introduced (a remote bus, an auth proxy), it MUST be typed `SecretStr`,
+  MUST come from the environment, and MUST never be logged or returned in a tool response
 
 **Layer 2 — Input Validation:**
 - Unit names validated against `UNIT_NAME_PATTERN` before every D-Bus call and every filesystem path resolution — no paths, no traversal
