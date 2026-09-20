@@ -9,6 +9,7 @@ containers without requiring PID 1 to be systemd.
 """
 
 import asyncio
+import fnmatch
 import logging
 import shutil
 from datetime import datetime, timezone
@@ -163,8 +164,6 @@ async def unit_list(
     all_units: bool = False, pattern: str | None = None, mode: str = "loaded",
 ) -> dict[str, Any]:
     """List systemd units (loaded, in memory) or installed unit files."""
-    import fnmatch
-
     bus = await _get_bus()
     try:
         if mode == "files":

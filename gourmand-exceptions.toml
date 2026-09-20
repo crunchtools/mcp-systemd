@@ -1,9 +1,105 @@
+# Gourmand exceptions for mcp-systemd-crunchtools.
+#
+# Each entry is classified per Gourmand 1.0.0 (upstream v0.16.5): gourmand_bug,
+# by_design, accepted_bad_taste, or fix_planned. See RT #1482 for the migration.
+#
+# Justification prose deliberately describes filesystem paths rather than quoting
+# their absolute form, so this file does not itself trip CH001-absolute_paths.
+# The literal defaults live in config.py's DEFAULT_* constants and README.md.
+
+# --- summary_litter -----------------------------------------------------------
+# CLAUDE.md is Claude Code orientation prose, not a source-summary comment. The
+# MCP Server profile (constitution V) names it as an acceptable exception.
 [[exceptions]]
-check = "summary_litter"
+check = "CH008-summary_litter"
 path = "CLAUDE.md"
-justification = "Claude Code project instructions for AI assistant orientation"
+justification = "Claude Code project instructions for AI assistant orientation. The constitution (MCP Server profile, Section V) names CLAUDE.md as an acceptable framework-requirement exception; it is orientation prose for the agent, not a source summary comment."
+classification = "by_design"
+
+# --- primitive_obsession ------------------------------------------------------
+[[exceptions]]
+check = "CH006-primitive_obsession"
+path = "src/mcp_systemd_crunchtools/__init__.py"
+justification = "Port 8022 is the assigned listen port for this server, defined once as a module-level int constant. A port is a bare numeric value; wrapping it in a domain type adds indirection without preventing any real error."
+classification = "by_design"
+
+# --- absolute_paths -----------------------------------------------------------
+# This is a systemd/D-Bus management server. The D-Bus system bus socket and the
+# systemd unit directory are canonical, OS-defined locations -- they are the
+# contract this server exists to operate against, not incidental hardcoding. Same
+# class as nagios-agent's libexec paths (RT #1482). They appear as the DEFAULT_*
+# constants, in docstrings documenting those defaults, and in a bind-mount help
+# string. All are overridable via the DBUS_SYSTEM_BUS_SOCKET / SYSTEMD_UNIT_DIR
+# environment variables.
+[[exceptions]]
+check = "CH001-absolute_paths"
+path = "src/mcp_systemd_crunchtools/config.py"
+justification = "DEFAULT_DBUS_SOCKET and DEFAULT_UNIT_DIR hold the OS-canonical D-Bus socket and systemd unit-directory locations, and the bind-mount help string names the socket location the user must mount. These are the systemd/D-Bus contract, overridable via DBUS_SYSTEM_BUS_SOCKET and SYSTEMD_UNIT_DIR."
+classification = "by_design"
 
 [[exceptions]]
-check = "primitive_obsession"
+check = "CH001-absolute_paths"
 path = "src/mcp_systemd_crunchtools/__init__.py"
-justification = "Port 8022 is the assigned port for this MCP server"
+justification = "Module docstring documents the DBUS_SYSTEM_BUS_SOCKET and SYSTEMD_UNIT_DIR defaults so the values are discoverable at import. Documentation of the OS-canonical defaults, not runtime hardcoding."
+classification = "by_design"
+
+[[exceptions]]
+check = "CH001-absolute_paths"
+path = "src/mcp_systemd_crunchtools/dbus_client.py"
+justification = "Docstring notes the default unit directory that must be bind-mounted for unit-file operations. Documentation of the OS-canonical default, overridable via SYSTEMD_UNIT_DIR."
+classification = "by_design"
+
+[[exceptions]]
+check = "CH001-absolute_paths"
+path = "src/mcp_systemd_crunchtools/server.py"
+justification = "Tool docstring notes the default unit directory that must be bind-mounted. Documentation of the OS-canonical default, overridable via SYSTEMD_UNIT_DIR."
+classification = "by_design"
+
+# --- hidden_env_config --------------------------------------------------------
+# The three env vars are real, documented configuration, read centrally in
+# config.py's Config.__init__. EV013 has no documentation detection of its own
+# (it matches var names against a fixed allowlist), so this entry is the record
+# that a human confirmed each is intentional and written down, with defaults
+# verified against the source rather than a docstring.
+[[exceptions]]
+check = "EV013-hidden_env_config"
+path = "src/mcp_systemd_crunchtools/config.py"
+justification = "DBUS_SYSTEM_BUS_SOCKET (default: the OS D-Bus system-bus socket), SYSTEMD_UNIT_DIR (default: the OS systemd unit directory), and SYSTEMD_EXTRA_PROTECTED_UNITS (default: empty) are the documented configuration surface of this server -- each is read once in Config.__init__ via os.environ.get with the default verified against this source, and each is documented by name, requirement, and default in README.md's Environment Variables table and in CLAUDE.md. Not hidden toggles."
+classification = "by_design"
+
+# --- manifest_lint_suppression ------------------------------------------------
+# The ruff ignore list in pyproject.toml is a set of deliberate linter decisions,
+# each carrying an inline WHY comment at its declaration. They are standard for
+# this codebase (long exception messages, many-kwarg tool signatures, magic
+# numbers for D-Bus/HTTP constants, singleton globals) and per-file test
+# relaxations -- not a means of hiding lint debt. Fleet-consistent with
+# mcp-github's handling (RT #1482).
+[[exceptions]]
+check = "EV002-manifest_lint_suppression"
+path = "pyproject.toml"
+justification = "The [tool.ruff.lint] ignore list and tests/* per-file-ignores are deliberate, documented linter decisions -- each carries an inline comment at its declaration explaining why (long exception messages, many-keyword tool signatures, magic numbers for D-Bus/HTTP constants, singleton globals, category-ordered __all__, test-only relaxations). ruff itself still runs with a broad select set; these are scoped relaxations, not a disabled gate."
+classification = "by_design"
+
+# --- conditional_wrapper ------------------------------------------------------
+# Both sites are FakeBus message-dispatch handlers in tests: a function that
+# matches on msg.member and early-returns a canned reply, falling through to
+# default_handler otherwise. That IS the dispatch; moving the condition to the
+# "call site" is meaningless for a message handler. Same false positive
+# mcp-ashigaru classified as gourmand_bug (RT #1482).
+[[exceptions]]
+check = "CH017-conditional_wrapper"
+path = "tests/test_tools.py"
+justification = "The flagged 'handler' functions are FakeBus message dispatchers: they match on msg.member, return a canned FakeReply for the case under test, and delegate everything else to default_handler. The early-return IS the dispatch logic, not a wrapper -- there is no call site to move the condition to. The check misfires on the message-handler idiom."
+classification = "gourmand_bug"
+
+# --- dead_structs -------------------------------------------------------------
+# Real finding: UnitFileWriteInput is instantiated in zero production files. The
+# actual tool (unit_file_write_tool) takes raw args and validates only the unit
+# name, so the model's content-size/extra-field constraints never run in
+# production. Wiring it in is a Layer-2 defense-model change that needs a spec
+# per constitution IX, so it is tracked separately, not fixed in the migration.
+[[exceptions]]
+check = "DC004-dead_structs"
+path = "src/mcp_systemd_crunchtools/models.py"
+justification = "Correct finding. UnitFileWriteInput is tested but never instantiated in production; unit_file_write_tool bypasses it and validates only the unit name, so no content-size cap runs at runtime. Wiring the model into the tool is a change to the defense/security model and requires a spec (constitution IX), tracked in RT #1492. Marked fix_planned until that lands."
+classification = "fix_planned"

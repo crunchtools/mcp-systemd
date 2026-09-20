@@ -56,7 +56,6 @@ ignore = [
     "PLR2004",  # magic numbers ok (HTTP status codes, D-Bus timestamps)
     "PLW0603",  # global statement ok for singletons
     "PIE790",   # pass in empty classes ok
-    "PLC0415",  # imports in tests ok
     "S105",     # hardcoded passwords in tests ok
     "TID252",   # relative imports in package ok
     "RUF022",   # __all__ sorted by category, not alphabetically
@@ -65,6 +64,9 @@ ignore = [
 [tool.ruff.lint.pylint]
 max-branches = 10
 max-statements = 50
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S108", "PLC0415", "PLR2004", "ARG001", "ARG002"]
