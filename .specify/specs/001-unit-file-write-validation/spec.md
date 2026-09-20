@@ -51,6 +51,13 @@ server actually has.
 still runs unchanged inside `dbus_client.unit_file_write` — this spec adds a
 size/shape check in front of it, it does not replace it.
 
+Note: `UnitFileWriteInput`'s `extra="forbid"` is *not* what newly closes the
+gap for unrecognized fields — verified that FastMCP already rejects an
+unknown keyword at its own tool-dispatch layer (it builds its own arg
+validator from the function signature), independent of this model, before
+and after this change. What this fix newly enforces is the **length/emptiness
+caps** on `unit_name` and `content`, which nothing previously checked.
+
 ### Layer 3 — Protected-Unit Denylist
 Not applicable — `unit_file_write` was never denylist-gated (only
 `unit_file_remove` and the lifecycle-mutation tools are); this is unchanged.
@@ -90,7 +97,11 @@ instead of being written to disk:
 
 - Empty `unit_name` or empty `content`
 - `unit_name` over 255 characters or `content` over 65536 characters
-- Any extra/unrecognized field in the tool call
+
+(An extra/unrecognized field was already rejected before this change —
+FastMCP's own tool-dispatch layer validates call arguments against the
+function signature independent of `UnitFileWriteInput`; see the Layer 2
+note above.)
 
 This is a narrowing of accepted input on the single highest-blast-radius
 tool in the server (it writes files to the host's systemd unit directory).
@@ -103,7 +114,7 @@ No previously-rejected input becomes newly accepted.
 ### Mocked D-Bus Tests
 - [x] `TestUnitFileWriteToolValidation` class in `test_tools.py`, using the `fake_bus` fixture
 - [x] Valid input still writes the file and reloads (regression check)
-- [x] Each rejected case (empty name, empty content, oversized name, oversized content, extra field) raises `UnitFileValidationError` and performs no D-Bus call and no disk write
+- [x] Each rejected case (empty name, empty content, oversized name, oversized content) raises `UnitFileValidationError` and performs no D-Bus call and no disk write. (Extra fields are not separately tested here: calling the Python tool function directly with an unexpected kwarg raises `TypeError` before `UnitFileWriteInput` ever runs, and the real MCP dispatch path is verified to reject them at FastMCP's own layer, independent of this model — see the spec's Layer 2 note.)
 
 ### Input Validation Tests
 - [x] `TestUnitFileWriteInput` in `test_validation.py` already covers the model itself — unchanged
