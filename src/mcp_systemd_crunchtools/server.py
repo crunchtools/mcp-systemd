@@ -257,7 +257,7 @@ async def journal_query_tool(
     Args:
         unit: Restrict to one unit (omit for the whole system journal)
         priority: Minimum priority: emerg/alert/crit/err/warning/notice/info/debug or 0-7
-        since: Show entries since this time (e.g. "1 hour ago", "2026-09-19 02:00")
+        since: Show entries since this time (e.g. "1 hour ago", "YYYY-MM-DD HH:MM:SS")
         until: Show entries until this time
         pattern: Filter messages by regex pattern (journalctl -g)
         boot: Boot offset (0 = current boot, -1 = previous boot, ...)
