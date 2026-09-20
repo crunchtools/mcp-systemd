@@ -11,6 +11,7 @@ MAX_REF_CHARS for longer references (patterns, paths).
 import logging
 
 from fastmcp.exceptions import ToolError
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +74,13 @@ class UnitFileError(ToolError):
 
     def __init__(self, message: str) -> None:
         super().__init__(message[:MAX_REF_CHARS])
+
+
+class UnitFileValidationError(ToolError):
+    """unit_file_write input failed Layer 2 validation (name, content, or extra fields)."""
+
+    def __init__(self, exc: ValidationError) -> None:
+        details = "; ".join(
+            f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in exc.errors()
+        )
+        super().__init__(f"Invalid unit_file_write input: {details}"[:MAX_REF_CHARS])

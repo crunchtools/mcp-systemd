@@ -14,8 +14,10 @@ from mcp_systemd_crunchtools.errors import (
     InvalidJournalPriorityError,
     InvalidUnitNameError,
     ProtectedUnitError,
+    UnitFileValidationError,
     UnitNotFoundError,
 )
+from mcp_systemd_crunchtools.models import MAX_UNIT_FILE_BYTES, MAX_UNIT_NAME_LENGTH
 
 from .conftest import FakeBus, FakeReply, default_handler
 
@@ -260,6 +262,55 @@ class TestUnitFiles:
         result = await dbus_client.unit_file_remove("ghost.service")
         assert result["removed"] is False
         assert result["backup_path"] is None
+
+
+class TestUnitFileWriteToolValidation:
+    """RT #1492 — unit_file_write_tool enforces UnitFileWriteInput, not just the unit name."""
+
+    @pytest.mark.asyncio
+    async def test_valid_input_still_writes_and_reloads(self, fake_bus: FakeBus) -> None:
+        result = await server.unit_file_write_tool("myapp.service", UNIT_CONTENT)
+        assert result["backup_path"] is None
+        assert Path(result["path"]).read_text() == UNIT_CONTENT
+        assert fake_bus.members() == ["Reload"]
+
+    @pytest.mark.asyncio
+    async def test_valid_input_can_enable_and_start(self, fake_bus: FakeBus) -> None:
+        result = await server.unit_file_write_tool(
+            "myapp.service", UNIT_CONTENT, enable=True, start=True
+        )
+        assert result["enable"]["status"] == "enabled"
+        assert result["start"]["status"] == "started"
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_content(self, fake_bus: FakeBus) -> None:
+        with pytest.raises(UnitFileValidationError):
+            await server.unit_file_write_tool("myapp.service", "")
+        assert fake_bus.members() == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_content(self, fake_bus: FakeBus) -> None:
+        with pytest.raises(UnitFileValidationError):
+            await server.unit_file_write_tool(
+                "myapp.service", "x" * (MAX_UNIT_FILE_BYTES + 1)
+            )
+        assert fake_bus.members() == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_oversized_unit_name(self, fake_bus: FakeBus) -> None:
+        with pytest.raises(UnitFileValidationError):
+            await server.unit_file_write_tool(
+                "a" * (MAX_UNIT_NAME_LENGTH + 1) + ".service", UNIT_CONTENT
+            )
+        assert fake_bus.members() == []
+
+    @pytest.mark.asyncio
+    async def test_no_disk_write_on_rejected_input(
+        self, fake_bus: FakeBus, tmp_path: Path
+    ) -> None:
+        with pytest.raises(UnitFileValidationError):
+            await server.unit_file_write_tool("myapp.service", "")
+        assert list(tmp_path.rglob("myapp.service")) == []
 
 
 class TestTroubleshooting:

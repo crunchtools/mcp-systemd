@@ -4,7 +4,10 @@ import logging
 from typing import Any
 
 from fastmcp import FastMCP
+from pydantic import ValidationError
 
+from .errors import UnitFileValidationError
+from .models import UnitFileWriteInput
 from .tools import (
     daemon_reload,
     failed_units,
@@ -222,7 +225,15 @@ async def unit_file_write_tool(
     Returns:
         Path written, backup path (if one was made), and enable/start results
     """
-    return await unit_file_write(unit_name, content, enable=enable, start=start)
+    try:
+        validated = UnitFileWriteInput(
+            unit_name=unit_name, content=content, enable=enable, start=start
+        )
+    except ValidationError as exc:
+        raise UnitFileValidationError(exc) from exc
+    return await unit_file_write(
+        validated.unit_name, validated.content, enable=validated.enable, start=validated.start
+    )
 
 
 @mcp.tool()
