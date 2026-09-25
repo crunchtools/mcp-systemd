@@ -1,9 +1,9 @@
 # mcp-systemd-crunchtools Constitution
 
-> **Version:** 0.1.0
+> **Version:** 0.1.1
 > **Ratified:** 2026-09-19
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.0.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.17.0
 > **Profile:** MCP Server
 
 This constitution establishes the core principles, constraints, and workflows that govern all development on mcp-systemd-crunchtools.
