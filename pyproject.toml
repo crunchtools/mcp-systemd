@@ -1,6 +1,6 @@
 [project]
 name = "mcp-systemd-crunchtools"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server for systemd unit management via D-Bus"
 requires-python = ">=3.10"
 license = "AGPL-3.0-or-later"

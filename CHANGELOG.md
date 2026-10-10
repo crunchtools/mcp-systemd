@@ -8,6 +8,15 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-10
+
+### Fixed
+- A byte-array property (`InvocationID` in `unit_status` and `unit_show`) is
+  returned in hex, as `systemctl show` prints it. It was Python's bytes repr
+  (`b'\xe5\x1a...'`), which no reader could match against a journal and which
+  a prompt-injection classifier reads as an escaped payload
+  (crunchtools/trentina#411).
+
 ## [0.2.0] - 2026-10-10
 
 ### Added
