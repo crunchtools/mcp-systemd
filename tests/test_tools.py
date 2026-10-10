@@ -1,6 +1,7 @@
 """Mocked tests for every tool the server registers."""
 
 import asyncio
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -62,6 +63,228 @@ async def test_all_tools_have_descriptions() -> None:
     tools = await server.mcp.list_tools()
     for tool in tools:
         assert tool.description, f"{tool.name} has no description"
+
+
+READ_ONLY = frozenset(
+    {
+        "unit_list_tool",
+        "unit_status_tool",
+        "unit_show_tool",
+        "journal_query_tool",
+        "failed_units_tool",
+        "list_jobs_tool",
+        "timer_list_tool",
+        "system_status_tool",
+        "hostinfo_tool",
+        "session_list_tool",
+    }
+)
+WRITES = frozenset(
+    {
+        "unit_start_tool",
+        "unit_stop_tool",
+        "unit_restart_tool",
+        "unit_reload_tool",
+        "unit_enable_tool",
+        "unit_disable_tool",
+        "unit_mask_tool",
+        "unit_unmask_tool",
+        "daemon_reload_tool",
+        "unit_file_write_tool",
+        "unit_file_remove_tool",
+    }
+)
+
+# The D-Bus methods a read-only tool may call: each returns state and changes
+# none. LoadUnit is the one that needs a reason. It resolves a unit name to its
+# object path, as `systemctl status` and `systemctl show` do; systemd keeps the
+# unit in memory only while something references it, and it queues no job,
+# starts nothing and writes no file.
+READ_DBUS_METHODS = frozenset(
+    {
+        (dbus_client.PROPS_IFACE, "Get"),
+        (dbus_client.PROPS_IFACE, "GetAll"),
+        (dbus_client.MANAGER_IFACE, "ListUnits"),
+        (dbus_client.MANAGER_IFACE, "ListUnitFiles"),
+        (dbus_client.MANAGER_IFACE, "ListJobs"),
+        (dbus_client.MANAGER_IFACE, "LoadUnit"),
+        (dbus_client.LOGIN_MANAGER_IFACE, "ListSessions"),
+    }
+)
+
+# The journalctl options a read-only tool may pass, and whether each consumes
+# the next argv element as its value. All of them select or format entries.
+# --rotate, --vacuum-*, --flush, --sync and --relinquish-var are absent.
+READ_JOURNALCTL_OPTIONS = {
+    "--no-pager": False,
+    "-n": True,
+    "-u": True,
+    "-p": True,
+    "--since": True,
+    "--until": True,
+    "-g": True,
+    "-b": True,
+}
+
+# One or more calls per read-only tool, covering every branch that picks a
+# different backend call.
+READ_ONLY_CALLS: list[tuple[str, dict[str, Any]]] = [
+    ("unit_list_tool", {}),
+    ("unit_list_tool", {"all_units": True, "pattern": "*.timer", "mode": "files"}),
+    ("unit_status_tool", {"unit_name": "myapp.service"}),
+    ("unit_status_tool", {"unit_name": "backup.timer"}),
+    ("unit_show_tool", {"unit_name": "myapp.service"}),
+    ("unit_show_tool", {"unit_name": "multi-user.target"}),
+    ("journal_query_tool", {}),
+    (
+        "journal_query_tool",
+        {
+            "unit": "myapp.service",
+            "priority": "err",
+            "since": "1 hour ago",
+            "until": "now",
+            "pattern": "boom",
+            "boot": -1,
+            "lines": 50,
+        },
+    ),
+    ("failed_units_tool", {}),
+    ("list_jobs_tool", {}),
+    ("timer_list_tool", {}),
+    ("system_status_tool", {}),
+    ("hostinfo_tool", {}),
+    ("session_list_tool", {}),
+]
+
+WRITE_CALLS: dict[str, dict[str, Any]] = {
+    "unit_start_tool": {"unit_name": "myapp.service"},
+    "unit_stop_tool": {"unit_name": "myapp.service"},
+    "unit_restart_tool": {"unit_name": "myapp.service"},
+    "unit_reload_tool": {"unit_name": "myapp.service"},
+    "unit_enable_tool": {"unit_name": "myapp.service"},
+    "unit_disable_tool": {"unit_name": "myapp.service"},
+    "unit_mask_tool": {"unit_name": "myapp.service"},
+    "unit_unmask_tool": {"unit_name": "myapp.service"},
+    "daemon_reload_tool": {},
+    "unit_file_write_tool": {"unit_name": "myapp.service", "content": UNIT_CONTENT},
+    "unit_file_remove_tool": {"unit_name": "myapp.service"},
+}
+
+
+class BackendRecorder:
+    """Records every way a tool can reach the host: D-Bus, a subprocess, the unit dir."""
+
+    def __init__(self, bus: FakeBus) -> None:
+        self.bus = bus
+        self.argvs: list[list[str]] = []
+        self.disk_writes: list[str] = []
+
+    def backend_calls(self) -> int:
+        return len(self.bus.calls) + len(self.argvs)
+
+    def state_changes(self) -> list[str]:
+        """Everything recorded that is not on the read allowlists."""
+        changes = [
+            f"dbus {msg.interface}.{msg.member}"
+            for msg in self.bus.calls
+            if (msg.interface, msg.member) not in READ_DBUS_METHODS
+        ]
+        for argv in self.argvs:
+            changes += _journalctl_state_changes(argv)
+        return changes + self.disk_writes
+
+
+def _journalctl_state_changes(argv: list[str]) -> list[str]:
+    """Options in a subprocess argv that are not read options of journalctl."""
+    if argv[0] != "journalctl":
+        return [f"exec {argv[0]}"]
+    changes = []
+    rest = argv[1:]
+    while rest:
+        option = rest.pop(0)
+        if option not in READ_JOURNALCTL_OPTIONS:
+            changes.append(f"journalctl {option}")
+        elif READ_JOURNALCTL_OPTIONS[option] and rest:
+            rest.pop(0)
+    return changes
+
+
+@pytest.fixture
+def backend(monkeypatch: pytest.MonkeyPatch, fake_bus: FakeBus) -> BackendRecorder:
+    """Fake the bus and journalctl, and record writes to disk before letting them through."""
+    recorder = BackendRecorder(fake_bus)
+
+    class FakeProc:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"Sep 19 02:00:00 lotor myapp[1]: boom\n", b""
+
+    async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
+        recorder.argvs.append(list(args))
+        return FakeProc()
+
+    def recording(label: str, original: Any) -> Any:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            recorder.disk_writes.append(f"disk {label}")
+            return original(*args, **kwargs)
+
+        return wrapper
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(Path, "write_text", recording("write_text", Path.write_text))
+    monkeypatch.setattr(Path, "unlink", recording("unlink", Path.unlink))
+    monkeypatch.setattr(shutil, "copy2", recording("copy2", shutil.copy2))
+    return recorder
+
+
+class TestReadOnlyAnnotation:
+    """Every registered tool is classified, and the reads really only read."""
+
+    @pytest.mark.asyncio
+    async def test_every_tool_is_classified(self) -> None:
+        tools = await server.mcp.list_tools()
+        assert READ_ONLY.isdisjoint(WRITES)
+        assert {tool.name for tool in tools} == READ_ONLY | WRITES
+        annotated = {
+            tool.name
+            for tool in tools
+            if tool.annotations is not None
+            and tool.annotations.model_dump(by_alias=True).get("readOnlyHint") is True
+        }
+        assert annotated == READ_ONLY
+
+    def test_call_tables_cover_both_sets(self) -> None:
+        assert {name for name, _ in READ_ONLY_CALLS} == READ_ONLY
+        assert set(WRITE_CALLS) == WRITES
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(("name", "arguments"), READ_ONLY_CALLS)
+    async def test_read_only_tool_changes_nothing(
+        self, backend: BackendRecorder, name: str, arguments: dict[str, Any]
+    ) -> None:
+        await server.mcp.call_tool(name, arguments)
+        assert backend.backend_calls() >= 1
+        assert backend.state_changes() == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", sorted(WRITES))
+    async def test_every_write_tool_trips_the_same_check(
+        self, backend: BackendRecorder, name: str
+    ) -> None:
+        """Control: the check above fails for each tool that is not annotated."""
+        await server.mcp.call_tool(name, WRITE_CALLS[name])
+        assert backend.state_changes() != []
+
+    def test_a_journalctl_write_option_is_caught(self) -> None:
+        """Control for the argv check: --rotate is flagged, a value that looks like it is not."""
+        assert _journalctl_state_changes(["journalctl", "--no-pager", "--rotate"]) == [
+            "journalctl --rotate"
+        ]
+        assert _journalctl_state_changes(["journalctl", "--since", "--rotate"]) == []
+        assert _journalctl_state_changes(["systemctl", "restart", "sshd.service"]) == [
+            "exec systemctl"
+        ]
 
 
 class TestUnitQueries:
@@ -231,9 +454,7 @@ class TestUnitFiles:
         assert Path(result["backup_path"]).read_text() == UNIT_CONTENT
 
     @pytest.mark.asyncio
-    async def test_remove_survives_a_unit_that_was_never_started(
-        self, fake_bus: FakeBus
-    ) -> None:
+    async def test_remove_survives_a_unit_that_was_never_started(self, fake_bus: FakeBus) -> None:
         await dbus_client.unit_file_write("myapp.service", UNIT_CONTENT)
 
         def handler(msg: Any) -> FakeReply:
@@ -291,9 +512,7 @@ class TestUnitFileWriteToolValidation:
     @pytest.mark.asyncio
     async def test_rejects_oversized_content(self, fake_bus: FakeBus) -> None:
         with pytest.raises(UnitFileValidationError):
-            await server.unit_file_write_tool(
-                "myapp.service", "x" * (MAX_UNIT_FILE_BYTES + 1)
-            )
+            await server.unit_file_write_tool("myapp.service", "x" * (MAX_UNIT_FILE_BYTES + 1))
         assert fake_bus.members() == []
 
     @pytest.mark.asyncio
@@ -305,9 +524,7 @@ class TestUnitFileWriteToolValidation:
         assert fake_bus.members() == []
 
     @pytest.mark.asyncio
-    async def test_no_disk_write_on_rejected_input(
-        self, fake_bus: FakeBus, tmp_path: Path
-    ) -> None:
+    async def test_no_disk_write_on_rejected_input(self, fake_bus: FakeBus, tmp_path: Path) -> None:
         with pytest.raises(UnitFileValidationError):
             await server.unit_file_write_tool("myapp.service", "")
         assert list(tmp_path.rglob("myapp.service")) == []
@@ -346,14 +563,23 @@ class TestTroubleshooting:
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
         result = await dbus_client.journal_query(
-            unit="myapp.service", priority="err", since="1 hour ago",
-            until="now", pattern="boom", boot=0, lines=50,
+            unit="myapp.service",
+            priority="err",
+            since="1 hour ago",
+            until="now",
+            pattern="boom",
+            boot=0,
+            lines=50,
         )
         assert "boom" in result["logs"]
         assert captured[:4] == ["journalctl", "--no-pager", "-n", "50"]
         for flag, value in (
-            ("-u", "myapp.service"), ("-p", "err"), ("--since", "1 hour ago"),
-            ("--until", "now"), ("-g", "boom"), ("-b", "0"),
+            ("-u", "myapp.service"),
+            ("-p", "err"),
+            ("--since", "1 hour ago"),
+            ("--until", "now"),
+            ("-g", "boom"),
+            ("-b", "0"),
         ):
             assert captured[captured.index(flag) + 1] == value
 

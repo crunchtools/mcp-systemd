@@ -18,7 +18,7 @@ RUN mkdir -p /staging && \
 FROM quay.io/hummingbird/python:latest-fips
 
 LABEL name="mcp-systemd-crunchtools" \
-      version="0.1.0" \
+      version="0.2.0" \
       summary="MCP server for systemd unit management via D-Bus" \
       maintainer="crunchtools.com" \
       org.opencontainers.image.source="https://github.com/crunchtools/mcp-systemd" \

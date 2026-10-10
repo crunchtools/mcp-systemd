@@ -34,9 +34,14 @@ from .tools import (
 
 logger = logging.getLogger(__name__)
 
+# A gateway drops an invalid optional argument only on a tool annotated read-only;
+# on anything else it refuses the call. Only tools that change nothing on the host
+# get this: they list or get over D-Bus, or run journalctl with query options.
+READ_ONLY = {"readOnlyHint": True}
+
 mcp = FastMCP(
     name="mcp-systemd-crunchtools",
-    version="0.1.0",
+    version="0.2.0",
     instructions=(
         "MCP server for systemd unit management via D-Bus. Manages the full "
         "lifecycle of any systemd unit — not just Podman-managed containers: "
@@ -49,9 +54,11 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def unit_list_tool(
-    all_units: bool = False, pattern: str | None = None, mode: str = "loaded",
+    all_units: bool = False,
+    pattern: str | None = None,
+    mode: str = "loaded",
 ) -> dict[str, Any]:
     """List systemd units.
 
@@ -67,7 +74,7 @@ async def unit_list_tool(
     return await unit_list(all_units=all_units, pattern=pattern, mode=mode)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def unit_status_tool(unit_name: str) -> dict[str, Any]:
     """Get curated status for a unit: active/sub/load state, PID, memory, CPU.
 
@@ -80,7 +87,7 @@ async def unit_status_tool(unit_name: str) -> dict[str, Any]:
     return await unit_status(unit_name)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def unit_show_tool(unit_name: str) -> dict[str, Any]:
     """Dump the full property set for a unit (dependencies, exec settings, cgroup, etc).
 
@@ -209,7 +216,10 @@ async def daemon_reload_tool() -> dict[str, Any]:
 
 @mcp.tool()
 async def unit_file_write_tool(
-    unit_name: str, content: str, enable: bool = False, start: bool = False,
+    unit_name: str,
+    content: str,
+    enable: bool = False,
+    start: bool = False,
 ) -> dict[str, Any]:
     """Write a new unit file for setting up a service. Backs up any file it overwrites.
 
@@ -253,7 +263,7 @@ async def unit_file_remove_tool(unit_name: str, mask: bool = False) -> dict[str,
     return await unit_file_remove(unit_name, mask=mask)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def journal_query_tool(
     unit: str | None = None,
     priority: str | None = None,
@@ -278,12 +288,17 @@ async def journal_query_tool(
         Journal log output
     """
     return await journal_query(
-        unit=unit, priority=priority, since=since, until=until,
-        pattern=pattern, boot=boot, lines=lines,
+        unit=unit,
+        priority=priority,
+        since=since,
+        until=until,
+        pattern=pattern,
+        boot=boot,
+        lines=lines,
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def failed_units_tool() -> dict[str, Any]:
     """List units currently in the 'failed' state — the first thing to check at 2AM.
 
@@ -293,7 +308,7 @@ async def failed_units_tool() -> dict[str, Any]:
     return await failed_units()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def list_jobs_tool() -> dict[str, Any]:
     """List pending systemd jobs — reveals stuck starts/stops/reloads.
 
@@ -303,7 +318,7 @@ async def list_jobs_tool() -> dict[str, Any]:
     return await list_jobs()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def timer_list_tool() -> dict[str, Any]:
     """List systemd timers with their next and last elapse times.
 
@@ -313,7 +328,7 @@ async def timer_list_tool() -> dict[str, Any]:
     return await timer_list()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def system_status_tool() -> dict[str, Any]:
     """Get overall systemd manager state: running/degraded, failed and job counts.
 
@@ -323,7 +338,7 @@ async def system_status_tool() -> dict[str, Any]:
     return await system_status()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def hostinfo_tool() -> dict[str, Any]:
     """Get host identity info: hostname, kernel, OS.
 
@@ -333,7 +348,7 @@ async def hostinfo_tool() -> dict[str, Any]:
     return await hostinfo()
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY)
 async def session_list_tool() -> dict[str, Any]:
     """List logged-in sessions — who's on this box right now.
 
