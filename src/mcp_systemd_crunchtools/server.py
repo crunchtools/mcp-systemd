@@ -41,7 +41,7 @@ READ_ONLY = {"readOnlyHint": True}
 
 mcp = FastMCP(
     name="mcp-systemd-crunchtools",
-    version="0.2.0",
+    version="0.2.1",
     instructions=(
         "MCP server for systemd unit management via D-Bus. Manages the full "
         "lifecycle of any systemd unit — not just Podman-managed containers: "

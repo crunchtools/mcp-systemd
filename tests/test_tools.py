@@ -287,6 +287,18 @@ class TestReadOnlyAnnotation:
         ]
 
 
+class TestJsonable:
+    def test_a_byte_array_is_hex_as_systemctl_prints_it(self) -> None:
+        raw = bytes.fromhex("e51a77aca16647f18451d0626d66789c")
+        assert dbus_client._to_jsonable(raw) == "e51a77aca16647f18451d0626d66789c"
+        assert dbus_client._to_jsonable(bytearray(raw)) == raw.hex()
+
+    def test_a_byte_array_inside_a_variant_or_a_list_is_hex(self) -> None:
+        raw = b"\xe5\x1a"
+        assert dbus_client._to_jsonable(dbus_client.Variant("ay", raw)) == "e51a"
+        assert dbus_client._to_jsonable({"ids": [raw]}) == {"ids": ["e51a"]}
+
+
 class TestUnitQueries:
     @pytest.mark.asyncio
     async def test_unit_list_skips_inactive_by_default(self, fake_bus: FakeBus) -> None:

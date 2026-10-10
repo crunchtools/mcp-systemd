@@ -71,6 +71,10 @@ def _to_jsonable(value: Any) -> Any:
         value = value.value
     if value is None or isinstance(value, str | int | float | bool):
         return value
+    if isinstance(value, bytes | bytearray):
+        # A D-Bus byte array (InvocationID, BootID), in hex as systemctl prints
+        # it. str() gave Python's bytes repr, which reads as an escaped payload.
+        return bytes(value).hex()
     if isinstance(value, list | tuple):
         return [_to_jsonable(v) for v in value]
     if isinstance(value, dict):
@@ -86,9 +90,13 @@ async def _get_bus() -> MessageBus:
 
 
 async def _call(
-    bus: MessageBus, interface: str, member: str,
-    signature: str = "", body: list[Any] | None = None,
-    path: str = SYSTEMD_PATH, destination: str = SYSTEMD_BUS,
+    bus: MessageBus,
+    interface: str,
+    member: str,
+    signature: str = "",
+    body: list[Any] | None = None,
+    path: str = SYSTEMD_PATH,
+    destination: str = SYSTEMD_BUS,
 ) -> Message:
     """Make a D-Bus method call."""
     msg = Message(
@@ -106,12 +114,20 @@ async def _call(
 
 
 async def _get_property(
-    bus: MessageBus, path: str, iface: str, prop: str, destination: str = SYSTEMD_BUS,
+    bus: MessageBus,
+    path: str,
+    iface: str,
+    prop: str,
+    destination: str = SYSTEMD_BUS,
 ) -> Any:
     """Get a single property from a D-Bus object. Returns None on any failure."""
     msg = Message(
-        destination=destination, path=path, interface=PROPS_IFACE,
-        member="Get", signature="ss", body=[iface, prop],
+        destination=destination,
+        path=path,
+        interface=PROPS_IFACE,
+        member="Get",
+        signature="ss",
+        body=[iface, prop],
     )
     reply = await bus.call(msg)
     if reply.message_type == MessageType.ERROR:
@@ -120,12 +136,19 @@ async def _get_property(
 
 
 async def _get_all_properties(
-    bus: MessageBus, path: str, iface: str, destination: str = SYSTEMD_BUS,
+    bus: MessageBus,
+    path: str,
+    iface: str,
+    destination: str = SYSTEMD_BUS,
 ) -> dict[str, Any]:
     """Get all properties for an interface. Returns {} on failure."""
     msg = Message(
-        destination=destination, path=path, interface=PROPS_IFACE,
-        member="GetAll", signature="s", body=[iface],
+        destination=destination,
+        path=path,
+        interface=PROPS_IFACE,
+        member="GetAll",
+        signature="s",
+        body=[iface],
     )
     reply = await bus.call(msg)
     if reply.message_type == MessageType.ERROR:
@@ -161,7 +184,9 @@ def _unit_type_iface(unit_name: str) -> str | None:
 
 
 async def unit_list(
-    all_units: bool = False, pattern: str | None = None, mode: str = "loaded",
+    all_units: bool = False,
+    pattern: str | None = None,
+    mode: str = "loaded",
 ) -> dict[str, Any]:
     """List systemd units (loaded, in memory) or installed unit files."""
     bus = await _get_bus()
@@ -185,13 +210,15 @@ async def unit_list(
                 continue
             if not all_units and active_state not in active_states:
                 continue
-            items.append({
-                "unit": name,
-                "description": unit[1],
-                "load": unit[2],
-                "active": active_state,
-                "sub": unit[4],
-            })
+            items.append(
+                {
+                    "unit": name,
+                    "description": unit[1],
+                    "load": unit[2],
+                    "active": active_state,
+                    "sub": unit[4],
+                }
+            )
         return {"items": items, "count": len(items)}
     finally:
         bus.disconnect()
@@ -285,7 +312,11 @@ async def unit_enable(unit_name: str) -> dict[str, Any]:
     bus = await _get_bus()
     try:
         reply = await _call(
-            bus, MANAGER_IFACE, "EnableUnitFiles", "asbb", [[unit_name], False, False],
+            bus,
+            MANAGER_IFACE,
+            "EnableUnitFiles",
+            "asbb",
+            [[unit_name], False, False],
         )
         changes = [{"type": c[0], "path": c[1], "target": c[2]} for c in reply.body[1]]
         await _call(bus, MANAGER_IFACE, "Reload")
@@ -315,7 +346,11 @@ async def unit_mask(unit_name: str) -> dict[str, Any]:
     bus = await _get_bus()
     try:
         reply = await _call(
-            bus, MANAGER_IFACE, "MaskUnitFiles", "asbb", [[unit_name], False, False],
+            bus,
+            MANAGER_IFACE,
+            "MaskUnitFiles",
+            "asbb",
+            [[unit_name], False, False],
         )
         changes = [{"type": c[0], "path": c[1], "target": c[2]} for c in reply.body[0]]
         await _call(bus, MANAGER_IFACE, "Reload")
@@ -367,10 +402,7 @@ async def list_jobs() -> dict[str, Any]:
     bus = await _get_bus()
     try:
         reply = await _call(bus, MANAGER_IFACE, "ListJobs")
-        items = [
-            {"id": j[0], "unit": j[1], "job_type": j[2], "state": j[3]}
-            for j in reply.body[0]
-        ]
+        items = [{"id": j[0], "unit": j[1], "job_type": j[2], "state": j[3]} for j in reply.body[0]]
         return {"items": items, "count": len(items)}
     finally:
         bus.disconnect()
@@ -396,12 +428,14 @@ async def timer_list() -> dict[str, Any]:
             unit_path = unit[6]
             next_elapse = await _get_property(bus, unit_path, TIMER_IFACE, "NextElapseUSecRealtime")
             last_trigger = await _get_property(bus, unit_path, TIMER_IFACE, "LastTriggerUSec")
-            items.append({
-                "unit": name,
-                "active": unit[3],
-                "next_elapse": _usec_to_iso(next_elapse or 0),
-                "last_trigger": _usec_to_iso(last_trigger or 0),
-            })
+            items.append(
+                {
+                    "unit": name,
+                    "active": unit[3],
+                    "next_elapse": _usec_to_iso(next_elapse or 0),
+                    "last_trigger": _usec_to_iso(last_trigger or 0),
+                }
+            )
         return {"items": items, "count": len(items)}
     finally:
         bus.disconnect()
@@ -425,11 +459,20 @@ async def hostinfo() -> dict[str, Any]:
     try:
         props: dict[str, Any] = {}
         for prop in (
-            "Hostname", "StaticHostname", "PrettyHostname", "Chassis",
-            "KernelName", "KernelRelease", "OperatingSystemPrettyName",
+            "Hostname",
+            "StaticHostname",
+            "PrettyHostname",
+            "Chassis",
+            "KernelName",
+            "KernelRelease",
+            "OperatingSystemPrettyName",
         ):
             value = await _get_property(
-                bus, HOSTNAME_PATH, HOSTNAME_IFACE, prop, destination=HOSTNAME_BUS,
+                bus,
+                HOSTNAME_PATH,
+                HOSTNAME_IFACE,
+                prop,
+                destination=HOSTNAME_BUS,
             )
             props[prop] = value if value is not None else "unknown"
         return props
@@ -442,25 +485,38 @@ async def session_list() -> dict[str, Any]:
     bus = await _get_bus()
     try:
         reply = await _call(
-            bus, LOGIN_MANAGER_IFACE, "ListSessions",
-            path=LOGIN_PATH, destination=LOGIN_BUS,
+            bus,
+            LOGIN_MANAGER_IFACE,
+            "ListSessions",
+            path=LOGIN_PATH,
+            destination=LOGIN_BUS,
         )
         items = []
         for session_id, uid, user_name, seat_id, session_path in reply.body[0]:
             state = await _get_property(
-                bus, session_path, LOGIN_SESSION_IFACE, "State", destination=LOGIN_BUS,
+                bus,
+                session_path,
+                LOGIN_SESSION_IFACE,
+                "State",
+                destination=LOGIN_BUS,
             )
             tty = await _get_property(
-                bus, session_path, LOGIN_SESSION_IFACE, "TTY", destination=LOGIN_BUS,
+                bus,
+                session_path,
+                LOGIN_SESSION_IFACE,
+                "TTY",
+                destination=LOGIN_BUS,
             )
-            items.append({
-                "session_id": session_id,
-                "uid": uid,
-                "user": user_name,
-                "seat": seat_id or "n/a",
-                "state": state or "unknown",
-                "tty": tty or "n/a",
-            })
+            items.append(
+                {
+                    "session_id": session_id,
+                    "uid": uid,
+                    "user": user_name,
+                    "seat": seat_id or "n/a",
+                    "state": state or "unknown",
+                    "tty": tty or "n/a",
+                }
+            )
         return {"items": items, "count": len(items)}
     finally:
         bus.disconnect()
@@ -476,7 +532,10 @@ def _resolve_unit_path(unit_name: str) -> Path:
 
 
 async def unit_file_write(
-    unit_name: str, content: str, enable: bool = False, start: bool = False,
+    unit_name: str,
+    content: str,
+    enable: bool = False,
+    start: bool = False,
 ) -> dict[str, Any]:
     """Write a unit file to the configured unit directory, backing up any existing file.
 
@@ -578,7 +637,9 @@ async def journal_query(
         args += ["-b", str(boot)]
 
     proc = await asyncio.create_subprocess_exec(
-        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode not in (0, None) and not stdout:
