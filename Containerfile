@@ -1,4 +1,4 @@
-FROM quay.io/hummingbird/python:latest-fips-builder AS builder
+FROM quay.io/hummingbird/python:3.14-fips-builder AS builder
 USER 0
 RUN dnf install -y --setopt=install_weak_deps=False systemd && dnf clean all
 WORKDIR /app
@@ -15,7 +15,7 @@ RUN mkdir -p /staging && \
     ldd /usr/bin/journalctl | sed -n 's|.*=> \(/[^ ]*\).*|\1|p' | sort -u | \
     xargs -I{} cp -L --parents {} /staging/
 
-FROM quay.io/hummingbird/python:latest-fips
+FROM quay.io/hummingbird/python:3.14-fips
 
 LABEL name="mcp-systemd-crunchtools" \
       version="0.2.1" \
