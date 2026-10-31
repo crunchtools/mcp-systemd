@@ -1164,7 +1164,7 @@ wheels = [
 
 [[package]]
 name = "mcp-systemd-crunchtools"
-version = "0.3.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "dbus-fast", version = "5.0.26", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
