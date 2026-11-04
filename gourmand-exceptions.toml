@@ -92,18 +92,6 @@ path = "tests/test_tools.py"
 justification = "The flagged 'handler' functions are FakeBus message dispatchers: they match on msg.member, return a canned FakeReply for the case under test, and delegate everything else to default_handler. The early-return IS the dispatch logic, not a wrapper -- there is no call site to move the condition to. The check misfires on the message-handler idiom."
 classification = "gourmand_bug"
 
-# --- dead_structs -------------------------------------------------------------
-# Real finding: UnitFileWriteInput is instantiated in zero production files. The
-# actual tool (unit_file_write_tool) takes raw args and validates only the unit
-# name, so the model's content-size/extra-field constraints never run in
-# production. Wiring it in is a Layer-2 defense-model change that needs a spec
-# per constitution IX, so it is tracked separately, not fixed in the migration.
-[[exceptions]]
-check = "DC004-dead_structs"
-path = "src/mcp_systemd_crunchtools/models.py"
-justification = "Correct finding. UnitFileWriteInput is tested but never instantiated in production; unit_file_write_tool bypasses it and validates only the unit name, so no content-size cap runs at runtime. Wiring the model into the tool is a change to the defense/security model and requires a spec (constitution IX), tracked in RT #1492. Marked fix_planned until that lands."
-classification = "fix_planned"
-
 # Ruff is not missing; it moved. Gourmand's IF001 looks for a literal
 # `ruff-check` hook id, and under python-sdlc (constitution XII, v1.30.0) ruff
 # runs inside the `sdlc-commit` hook, configured by [tool.ruff] in
