@@ -12,7 +12,10 @@ from ..dbus_client import unit_file_write as _unit_file_write
 
 
 async def unit_file_write(
-    unit_name: str, content: str, enable: bool = False, start: bool = False,
+    unit_name: str,
+    content: str,
+    enable: bool = False,
+    start: bool = False,
 ) -> dict[str, Any]:
     """Write a unit file, backing up any file it overwrites."""
     return await _unit_file_write(unit_name, content, enable=enable, start=start)

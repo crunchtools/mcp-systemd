@@ -17,23 +17,39 @@ UNIT_NAME_PATTERN = re.compile(
 )
 
 ALLOWED_JOURNAL_PRIORITIES = {
-    "emerg", "alert", "crit", "err", "warning", "notice", "info", "debug",
-    "0", "1", "2", "3", "4", "5", "6", "7",
+    "emerg",
+    "alert",
+    "crit",
+    "err",
+    "warning",
+    "notice",
+    "info",
+    "debug",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
 }
 
-DEFAULT_PROTECTED_UNITS = frozenset({
-    "dbus.service",
-    "dbus-broker.service",
-    "systemd-logind.service",
-    "systemd-journald.service",
-    "systemd-networkd.service",
-    "systemd-resolved.service",
-    "sshd.service",
-    "ssh.service",
-    "network.service",
-    "NetworkManager.service",
-    "polkit.service",
-})
+DEFAULT_PROTECTED_UNITS = frozenset(
+    {
+        "dbus.service",
+        "dbus-broker.service",
+        "systemd-logind.service",
+        "systemd-journald.service",
+        "systemd-networkd.service",
+        "systemd-resolved.service",
+        "sshd.service",
+        "ssh.service",
+        "network.service",
+        "NetworkManager.service",
+        "polkit.service",
+    }
+)
 
 
 class UnitFileWriteInput(BaseModel):
@@ -42,11 +58,15 @@ class UnitFileWriteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     unit_name: str = Field(
-        ..., min_length=1, max_length=MAX_UNIT_NAME_LENGTH,
+        ...,
+        min_length=1,
+        max_length=MAX_UNIT_NAME_LENGTH,
         description="Bare unit file name, e.g. 'myapp.service'",
     )
     content: str = Field(
-        ..., min_length=1, max_length=MAX_UNIT_FILE_BYTES,
+        ...,
+        min_length=1,
+        max_length=MAX_UNIT_FILE_BYTES,
         description="Full contents of the unit file",
     )
     enable: bool = Field(default=False, description="Enable the unit after writing")
