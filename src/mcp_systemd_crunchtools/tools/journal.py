@@ -18,8 +18,13 @@ async def journal_query(
 ) -> dict[str, Any]:
     """Query the journal with optional unit/priority/time/pattern/boot filters."""
     return await _journal_query(
-        unit=unit, priority=priority, since=since, until=until,
-        pattern=pattern, boot=boot, lines=lines,
+        unit=unit,
+        priority=priority,
+        since=since,
+        until=until,
+        pattern=pattern,
+        boot=boot,
+        lines=lines,
     )
 
 

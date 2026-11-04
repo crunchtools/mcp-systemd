@@ -103,3 +103,14 @@ check = "DC004-dead_structs"
 path = "src/mcp_systemd_crunchtools/models.py"
 justification = "Correct finding. UnitFileWriteInput is tested but never instantiated in production; unit_file_write_tool bypasses it and validates only the unit name, so no content-size cap runs at runtime. Wiring the model into the tool is a change to the defense/security model and requires a spec (constitution IX), tracked in RT #1492. Marked fix_planned until that lands."
 classification = "fix_planned"
+
+# Ruff is not missing; it moved. Gourmand's IF001 looks for a literal
+# `ruff-check` hook id, and under python-sdlc (constitution XII, v1.30.0) ruff
+# runs inside the `sdlc-commit` hook, configured by [tool.ruff] in
+# pyproject.toml. Same precedent as trentina.
+[[exceptions]]
+check = "linter_configuration"
+path = ".pre-commit-config.yaml"
+pattern = "ruff-check"
+justification = "ruff runs inside the sdlc-commit hook from python-sdlc (constitution XII v1.30.0), configured by [tool.ruff] in pyproject.toml; Gourmand looks for a literal ruff hook id"
+classification = "by_design"
