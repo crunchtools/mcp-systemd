@@ -8,6 +8,8 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-08
+
 ### Security
 
 - The documented container invocation no longer mounts `/etc/systemd/system`
