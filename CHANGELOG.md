@@ -8,6 +8,20 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+### Security
+
+- The documented container invocation no longer mounts `/etc/systemd/system`
+  with `:Z`, and README and SECURITY.md now say why `:z`/`:Z` must never be
+  used on it. Both relabel the host directory recursively, and on gloval that
+  had rewritten the SELinux type of all 264 entries under
+  `/etc/systemd/system` — every distro unit included, `sshd` and `dbus` among
+  them — from `systemd_unit_file_t` to `container_file_t`, which any
+  `container_t` process reaching the path can read. It also recurred on every
+  container restart. The relabel bought nothing:
+  `container_runtime_t`, which this server already runs as, can read and
+  write `systemd_unit_file_t` directly. Verified on the host, with zero AVC
+  denials after `restorecon -RF`.
+
 ## [0.3.1] - 2026-10-31
 
 ### Security

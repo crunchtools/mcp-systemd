@@ -16,12 +16,23 @@ pip install mcp-systemd-crunchtools
 # Container
 podman run \
   -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket \
-  -v /etc/systemd/system:/etc/systemd/system:Z \
+  -v /etc/systemd/system:/etc/systemd/system \
   --security-opt label=type:container_runtime_t \
   quay.io/crunchtools/mcp-systemd
 ```
 
 The D-Bus socket mount is required for every tool. The `/etc/systemd/system` mount is only required for `unit_file_write_tool` and `unit_file_remove_tool` — omit it to run the server read/lifecycle-only.
+
+**Do not add `:z` or `:Z` to the unit-directory mount.** Both relabel the host
+directory recursively — `z` to `container_file_t`, `Z` to a container-private
+MCS label — and `/etc/systemd/system` is not a volume, it is host state whose
+SELinux type is a real security boundary. One such mount rewrites the type on
+every unit on the host, including `sshd` and `dbus`, and it does it again on
+every container restart. `container_runtime_t` can already read and write
+`systemd_unit_file_t`, which is what the relabel was buying, so the mount
+needs no label option at all. Fix an already-relabeled host with
+`restorecon -RF /etc/systemd/system` (`-F` is required because
+`container_file_t` is a customizable type, so a plain `restorecon` declines).
 
 ## Configuration
 
