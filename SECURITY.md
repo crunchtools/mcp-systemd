@@ -10,6 +10,7 @@ This document describes the security architecture of mcp-systemd-crunchtools.
 |-------|-------------|----------------------|
 | Host D-Bus system bus | Critical | Full control over every systemd unit on the host |
 | `/etc/systemd/system` (when mounted) | Critical | Arbitrary unit file write = arbitrary root-privileged process definition |
+| SELinux type of `/etc/systemd/system` | Critical | Mounting it `:z`/`:Z` relabels every unit on the host, including `sshd` and `dbus`, so any `container_t` process that can reach the path gains access the policy meant to deny. Mount it with no label option. |
 | Journal contents | Medium | Log data exposure |
 | Session/host info | Low | Informational, read-only |
 
