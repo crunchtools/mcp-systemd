@@ -20,7 +20,7 @@ from mcp_systemd_crunchtools.errors import (
 )
 from mcp_systemd_crunchtools.models import MAX_UNIT_FILE_BYTES, MAX_UNIT_NAME_LENGTH
 
-from .conftest import FakeBus, FakeReply, default_handler
+from .conftest import UNIT_PATH, FakeBus, FakeReply, default_handler
 
 EXPECTED_TOOL_COUNT = 21
 
@@ -614,6 +614,72 @@ class TestSystemAndSessions:
         timer = result["items"][0]
         assert timer["unit"] == "backup.timer"
         assert timer["next_elapse"].startswith("2025-")
+
+    @pytest.mark.parametrize(
+        "usec",
+        [
+            0,  # systemd's "unset"
+            dbus_client.USEC_INFINITY,  # systemd's "infinity"
+            -1,
+            None,
+            "never",
+            2**63,  # in range for uint64, far outside datetime's
+        ],
+    )
+    def test_unrenderable_timestamps_become_none(self, usec: Any) -> None:
+        assert dbus_client._usec_to_iso(usec) is None
+
+    @pytest.mark.asyncio
+    async def test_timer_list_reports_infinity_as_no_next_elapse(self, fake_bus: FakeBus) -> None:
+        """A timer that will never fire again gets UINT64_MAX from systemd."""
+
+        def handler(msg: Any) -> FakeReply:
+            if msg.member == "Get" and msg.body[1] == "NextElapseUSecRealtime":
+                return FakeReply([dbus_client.USEC_INFINITY])
+            return default_handler(msg)
+
+        fake_bus.handler = handler
+        result = await dbus_client.timer_list()
+        assert result["count"] == 1
+        assert result["items"][0]["next_elapse"] is None
+        assert result["items"][0]["last_trigger"].startswith("2025-")
+
+    @pytest.mark.asyncio
+    async def test_timer_list_reports_zero_as_never_triggered(self, fake_bus: FakeBus) -> None:
+        """A timer that has not run yet reports LastTriggerUSec of 0."""
+
+        def handler(msg: Any) -> FakeReply:
+            if msg.member == "Get" and msg.body[1] == "LastTriggerUSec":
+                return FakeReply([0])
+            return default_handler(msg)
+
+        fake_bus.handler = handler
+        result = await dbus_client.timer_list()
+        assert result["items"][0]["last_trigger"] is None
+        assert result["items"][0]["next_elapse"].startswith("2025-")
+
+    @pytest.mark.asyncio
+    async def test_timer_list_survives_one_unreadable_timer(self, fake_bus: FakeBus) -> None:
+        bad_path = "/org/freedesktop/systemd1/unit/bad_2etimer"
+        timers = [
+            ("good.timer", "Good", "loaded", "active", "waiting", "", UNIT_PATH),
+            ("bad.timer", "Bad", "loaded", "active", "waiting", "", bad_path),
+        ]
+
+        def handler(msg: Any) -> FakeReply:
+            if msg.member == "ListUnits":
+                return FakeReply([timers])
+            if msg.path == bad_path:
+                raise RuntimeError("timer went away mid-listing")
+            return default_handler(msg)
+
+        fake_bus.handler = handler
+        result = await dbus_client.timer_list()
+        assert result["count"] == 2
+        good, bad = result["items"]
+        assert good["next_elapse"].startswith("2025-")
+        assert bad["unit"] == "bad.timer"
+        assert "went away" in bad["error"]
 
     @pytest.mark.asyncio
     async def test_system_status(self, fake_bus: FakeBus) -> None:

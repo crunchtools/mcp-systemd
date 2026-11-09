@@ -8,6 +8,16 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+### Fixed
+
+- `timer_list` no longer fails with `year must be in 1..9999, not 586524`.
+  systemd writes UINT64_MAX into a USec property to mean "infinity" — a timer
+  with no further elapse, a unit that has never run — and that value was being
+  divided into a `datetime`. Infinity and 0 now render as `null`, as does any
+  other value that is not a point in time. A timer whose properties cannot be
+  read is listed with an `error` field instead of aborting the listing for
+  every other timer on the host.
+
 ## [0.3.2] - 2026-11-08
 
 ### Security

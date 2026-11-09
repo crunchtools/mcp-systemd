@@ -51,6 +51,11 @@ LOGIN_SESSION_IFACE = "org.freedesktop.login1.Session"
 
 MICROSECONDS_PER_SECOND = 1_000_000
 
+# systemd writes UINT64_MAX into a USec property to mean "infinity" — a timer
+# that will never elapse again, a unit that has never run. 0 means "unset".
+# Neither is a point in time, and neither survives datetime conversion.
+USEC_INFINITY = 2**64 - 1
+
 
 def validate_unit_name(name: str) -> str:
     """Validate a bare unit name (no paths, no traversal). Returns it unchanged."""
@@ -408,11 +413,24 @@ async def list_jobs() -> dict[str, Any]:
         bus.disconnect()
 
 
-def _usec_to_iso(usec: int) -> str | None:
-    """Convert a systemd realtime microsecond timestamp to ISO 8601, or None if unset."""
-    if not usec:
+def _usec_to_iso(usec: Any) -> str | None:
+    """Convert a systemd realtime microsecond timestamp to ISO 8601.
+
+    Returns None when there is no time to render: 0 (unset), UINT64_MAX
+    (systemd's "infinity" — a timer that will never fire again), a
+    non-integer, or any value outside datetime's range. The value comes off
+    the D-Bus wire, so an unrenderable one is reported as absent rather than
+    raised at the caller.
+    """
+    if not isinstance(usec, int) or isinstance(usec, bool):
         return None
-    return datetime.fromtimestamp(usec / MICROSECONDS_PER_SECOND, tz=timezone.utc).isoformat()
+    if usec <= 0 or usec >= USEC_INFINITY:
+        return None
+    try:
+        return datetime.fromtimestamp(usec / MICROSECONDS_PER_SECOND, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        logger.warning("unrenderable systemd timestamp: %s usec", usec)
+        return None
 
 
 async def timer_list() -> dict[str, Any]:
@@ -425,17 +443,24 @@ async def timer_list() -> dict[str, Any]:
             name = unit[0]
             if not name.endswith(".timer"):
                 continue
-            unit_path = unit[6]
-            next_elapse = await _get_property(bus, unit_path, TIMER_IFACE, "NextElapseUSecRealtime")
-            last_trigger = await _get_property(bus, unit_path, TIMER_IFACE, "LastTriggerUSec")
-            items.append(
-                {
-                    "unit": name,
-                    "active": unit[3],
-                    "next_elapse": _usec_to_iso(next_elapse or 0),
-                    "last_trigger": _usec_to_iso(last_trigger or 0),
-                }
-            )
+            # One unreadable timer must not cost the caller the whole listing.
+            try:
+                unit_path = unit[6]
+                next_elapse = await _get_property(
+                    bus, unit_path, TIMER_IFACE, "NextElapseUSecRealtime"
+                )
+                last_trigger = await _get_property(bus, unit_path, TIMER_IFACE, "LastTriggerUSec")
+                items.append(
+                    {
+                        "unit": name,
+                        "active": unit[3],
+                        "next_elapse": _usec_to_iso(next_elapse),
+                        "last_trigger": _usec_to_iso(last_trigger),
+                    }
+                )
+            except Exception as exc:
+                logger.warning("skipping timer %s: %s", name, exc)
+                items.append({"unit": name, "active": unit[3], "error": str(exc)})
         return {"items": items, "count": len(items)}
     finally:
         bus.disconnect()
