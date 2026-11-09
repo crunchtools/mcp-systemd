@@ -322,6 +322,10 @@ async def list_jobs_tool() -> dict[str, Any]:
 async def timer_list_tool() -> dict[str, Any]:
     """List systemd timers with their next and last elapse times.
 
+    A null next_elapse means the timer will never fire again; a null
+    last_trigger means it has never run. A timer whose properties could not
+    be read carries an error field instead of the two times.
+
     Returns:
         List of timers with count
     """
