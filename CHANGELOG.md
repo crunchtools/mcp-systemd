@@ -8,6 +8,8 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-09
+
 ### Fixed
 
 - `timer_list` no longer fails with `year must be in 1..9999, not 586524`.
