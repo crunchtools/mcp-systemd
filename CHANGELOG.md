@@ -8,6 +8,16 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-10
+
+### Fixed
+
+- Containerfile now installs dependencies from the committed, Dependabot-maintained
+  `uv.lock` instead of letting `pip install .` resolve them fresh from
+  pyproject's floor-pins. A new `lock` stage runs `uv export` to produce a
+  frozen `requirements.txt`, and both installs in the builder stage use
+  `--no-deps` so pip cannot re-resolve anything. Part of RT#1564.
+
 ## [0.3.3] - 2026-11-09
 
 ### Fixed
