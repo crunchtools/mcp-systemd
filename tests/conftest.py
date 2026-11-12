@@ -126,6 +126,44 @@ def default_handler(msg: Any) -> FakeReply:
     return FakeReply(bodies[msg.member])
 
 
+class FakeStream:
+    """An async byte stream that yields `total` bytes of `line`, built lazily.
+
+    Lazy so a test can push tens of MB through journal_query without the fake
+    itself holding them — which is what lets a memory budget see the reader.
+    """
+
+    def __init__(self, line: bytes = b"", total: int = 0) -> None:
+        self._line = line
+        self._left = total if line else 0
+
+    async def read(self, n: int = -1) -> bytes:
+        if self._left <= 0:
+            return b""
+        size = self._left if n < 0 else min(n, self._left)
+        reps = size // len(self._line) + 1
+        self._left -= size
+        return (self._line * reps)[:size]
+
+
+class FakeProc:
+    """A journalctl process: streams for the new reader, communicate() for the old."""
+
+    def __init__(self, stdout: bytes = b"", total: int | None = None, returncode: int = 0) -> None:
+        self.stdout = FakeStream(stdout, len(stdout) if total is None else total)
+        self.stderr = FakeStream()
+        self.returncode = returncode
+
+    async def wait(self) -> int:
+        return self.returncode
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        out = bytearray()
+        while chunk := await self.stdout.read(65536):
+            out += chunk
+        return bytes(out), b""
+
+
 class FakeBus:
     """Minimal async stand-in for dbus_fast.aio.MessageBus."""
 

@@ -8,6 +8,10 @@ MAX_UNIT_NAME_LENGTH = 255
 MAX_UNIT_FILE_BYTES = 65536
 MAX_PATTERN_LENGTH = 200
 MAX_JOURNAL_LINES = 1000
+# Lines alone do not bound a journal read: one journald line can be tens of KB,
+# and Python keeps its heap high-water mark after a large read (#59).
+MAX_JOURNAL_BYTES = 1024 * 1024
+MAX_JOURNAL_STDERR_BYTES = 64 * 1024
 
 # Bare unit name only — no slashes, no leading dot, a recognized unit suffix.
 # This blocks path traversal (../, absolute paths) by construction.

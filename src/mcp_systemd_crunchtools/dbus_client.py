@@ -28,7 +28,13 @@ from .errors import (
     UnitNotFoundError,
     UnitOperationError,
 )
-from .models import ALLOWED_JOURNAL_PRIORITIES, MAX_JOURNAL_LINES, UNIT_NAME_PATTERN
+from .models import (
+    ALLOWED_JOURNAL_PRIORITIES,
+    MAX_JOURNAL_BYTES,
+    MAX_JOURNAL_LINES,
+    MAX_JOURNAL_STDERR_BYTES,
+    UNIT_NAME_PATTERN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -632,6 +638,30 @@ async def unit_file_remove(unit_name: str, mask: bool = False) -> dict[str, Any]
     }
 
 
+async def _read_tail(stream: asyncio.StreamReader, limit: int) -> tuple[bytes, bool]:
+    """Read a stream to EOF, keeping only its last `limit` bytes.
+
+    Holds at most twice `limit` at once, so a large read never sets a large
+    heap high-water mark. Returns the tail and whether anything was dropped;
+    a dropped head also drops the partial line it leaves behind.
+    """
+    buf = bytearray()
+    truncated = False
+    while chunk := await stream.read(65536):
+        buf += chunk
+        if len(buf) > 2 * limit:
+            del buf[:-limit]
+            truncated = True
+    if len(buf) > limit:
+        del buf[:-limit]
+        truncated = True
+    if truncated:
+        newline = buf.find(b"\n")
+        if newline != -1:
+            del buf[: newline + 1]
+    return bytes(buf), truncated
+
+
 async def journal_query(
     unit: str | None = None,
     priority: str | None = None,
@@ -667,7 +697,15 @@ async def journal_query(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await proc.communicate()
+    if proc.stdout is None or proc.stderr is None:
+        raise UnitFileError("journalctl started without output pipes")
+    (stdout, truncated), (stderr, _) = await asyncio.gather(
+        _read_tail(proc.stdout, MAX_JOURNAL_BYTES),
+        _read_tail(proc.stderr, MAX_JOURNAL_STDERR_BYTES),
+    )
+    await proc.wait()
     if proc.returncode not in (0, None) and not stdout:
-        raise UnitFileError(f"journalctl failed: {stderr.decode()}")
-    return {"logs": stdout.decode(errors="replace")}
+        raise UnitFileError(f"journalctl failed: {stderr.decode(errors='replace')}")
+    # Newest entries are kept: journalctl prints oldest first, and the tail is
+    # what a 2AM query is after.
+    return {"logs": stdout.decode(errors="replace"), "truncated": truncated}
