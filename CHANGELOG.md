@@ -8,6 +8,17 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-11-12
+
+### Fixed
+
+- `journal_query` now reads journalctl output incrementally and keeps only the
+  newest 1 MiB, returning `truncated: true` when it drops older lines. The 0.3.5
+  line cap did not bound bytes: 1000 lines at journald's 48KB line limit is ~48MB,
+  and the server's heap never gave a large read back. Reproduced on 0.3.4: one
+  62MB journal response raised anon memory from 73MB to 134MB permanently; 100×
+  every read tool and 100× `unit_restart` on current code left it flat (#59).
+
 ## [0.3.5] - 2026-11-12
 
 ### Fixed

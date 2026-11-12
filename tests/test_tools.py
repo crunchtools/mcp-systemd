@@ -4,6 +4,7 @@ import asyncio
 import shutil
 import subprocess
 import sys
+import tracemalloc
 from pathlib import Path
 from typing import Any
 
@@ -15,12 +16,18 @@ from mcp_systemd_crunchtools.errors import (
     InvalidJournalPriorityError,
     InvalidUnitNameError,
     ProtectedUnitError,
+    UnitFileError,
     UnitFileValidationError,
     UnitNotFoundError,
 )
-from mcp_systemd_crunchtools.models import MAX_UNIT_FILE_BYTES, MAX_UNIT_NAME_LENGTH
+from mcp_systemd_crunchtools.models import (
+    MAX_JOURNAL_BYTES,
+    MAX_JOURNAL_STDERR_BYTES,
+    MAX_UNIT_FILE_BYTES,
+    MAX_UNIT_NAME_LENGTH,
+)
 
-from .conftest import UNIT_PATH, FakeBus, FakeReply, default_handler
+from .conftest import UNIT_PATH, FakeBus, FakeProc, FakeReply, default_handler
 
 EXPECTED_TOOL_COUNT = 21
 
@@ -214,15 +221,9 @@ def backend(monkeypatch: pytest.MonkeyPatch, fake_bus: FakeBus) -> BackendRecord
     """Fake the bus and journalctl, and record writes to disk before letting them through."""
     recorder = BackendRecorder(fake_bus)
 
-    class FakeProc:
-        returncode = 0
-
-        async def communicate(self) -> tuple[bytes, bytes]:
-            return b"Sep 19 02:00:00 lotor myapp[1]: boom\n", b""
-
     async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
         recorder.argvs.append(list(args))
-        return FakeProc()
+        return FakeProc(b"Sep 19 02:00:00 lotor myapp[1]: boom\n")
 
     def recording(label: str, original: Any) -> Any:
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -563,15 +564,9 @@ class TestTroubleshooting:
     async def test_journal_query_builds_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[str] = []
 
-        class FakeProc:
-            returncode = 0
-
-            async def communicate(self) -> tuple[bytes, bytes]:
-                return b"Sep 19 02:00:00 lotor myapp[1]: boom\n", b""
-
         async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
             captured.extend(args)
-            return FakeProc()
+            return FakeProc(b"Sep 19 02:00:00 lotor myapp[1]: boom\n")
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
         result = await dbus_client.journal_query(
@@ -599,19 +594,67 @@ class TestTroubleshooting:
     async def test_journal_query_caps_lines(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[str] = []
 
-        class FakeProc:
-            returncode = 0
-
-            async def communicate(self) -> tuple[bytes, bytes]:
-                return b"x\n", b""
-
         async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
             captured.extend(args)
-            return FakeProc()
+            return FakeProc(b"x\n")
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
         await dbus_client.journal_query(lines=10**9)
         assert captured[3] == "1000"
+
+    @pytest.mark.asyncio
+    async def test_journal_query_stays_inside_a_memory_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#59: a capped line count still let ~48MB through, and the heap kept it.
+
+        1000 lines at journald's 48KB stdout LineMax is what -n 1000 can return.
+        Drive it repeatedly and hold the peak to a few MB.
+        """
+        line = b"Nov 12 02:00:00 gloval myapp[1]: " + b"x" * (48 * 1024) + b"\n"
+
+        async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
+            return FakeProc(line, total=len(line) * 1000)
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+        tracemalloc.start()
+        try:
+            for _ in range(5):
+                result = await dbus_client.journal_query(lines=1000)
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        assert peak < 8 * MAX_JOURNAL_BYTES
+        assert result["truncated"] is True
+        assert len(result["logs"]) <= MAX_JOURNAL_BYTES
+        assert result["logs"].startswith("Nov 12 02:00:00 gloval")
+
+    @pytest.mark.asyncio
+    async def test_journal_query_is_not_truncated_when_small(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
+            return FakeProc(b"a\nb\n")
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+        result = await dbus_client.journal_query()
+        assert result == {"logs": "a\nb\n", "truncated": False}
+
+    @pytest.mark.asyncio
+    async def test_journal_query_failure_reports_bounded_stderr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        line = b"Failed to parse timestamp: garbage\n"
+
+        async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
+            return FakeProc(returncode=1, stderr=line, stderr_total=len(line) * 100_000)
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+        with pytest.raises(UnitFileError) as excinfo:
+            await dbus_client.journal_query(since="garbage")
+        message = str(excinfo.value)
+        assert "Failed to parse timestamp" in message
+        assert len(message) <= MAX_JOURNAL_STDERR_BYTES + 100
 
     @pytest.mark.asyncio
     async def test_journal_query_rejects_a_bad_priority(self) -> None:
