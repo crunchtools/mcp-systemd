@@ -149,9 +149,16 @@ class FakeStream:
 class FakeProc:
     """A journalctl process: streams for the new reader, communicate() for the old."""
 
-    def __init__(self, stdout: bytes = b"", total: int | None = None, returncode: int = 0) -> None:
+    def __init__(
+        self,
+        stdout: bytes = b"",
+        total: int | None = None,
+        returncode: int = 0,
+        stderr: bytes = b"",
+        stderr_total: int | None = None,
+    ) -> None:
         self.stdout = FakeStream(stdout, len(stdout) if total is None else total)
-        self.stderr = FakeStream()
+        self.stderr = FakeStream(stderr, len(stderr) if stderr_total is None else stderr_total)
         self.returncode = returncode
 
     async def wait(self) -> int:

@@ -16,11 +16,13 @@ from mcp_systemd_crunchtools.errors import (
     InvalidJournalPriorityError,
     InvalidUnitNameError,
     ProtectedUnitError,
+    UnitFileError,
     UnitFileValidationError,
     UnitNotFoundError,
 )
 from mcp_systemd_crunchtools.models import (
     MAX_JOURNAL_BYTES,
+    MAX_JOURNAL_STDERR_BYTES,
     MAX_UNIT_FILE_BYTES,
     MAX_UNIT_NAME_LENGTH,
 )
@@ -637,6 +639,22 @@ class TestTroubleshooting:
         monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
         result = await dbus_client.journal_query()
         assert result == {"logs": "a\nb\n", "truncated": False}
+
+    @pytest.mark.asyncio
+    async def test_journal_query_failure_reports_bounded_stderr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        line = b"Failed to parse timestamp: garbage\n"
+
+        async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
+            return FakeProc(returncode=1, stderr=line, stderr_total=len(line) * 100_000)
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+        with pytest.raises(UnitFileError) as excinfo:
+            await dbus_client.journal_query(since="garbage")
+        message = str(excinfo.value)
+        assert "Failed to parse timestamp" in message
+        assert len(message) <= MAX_JOURNAL_STDERR_BYTES + 100
 
     @pytest.mark.asyncio
     async def test_journal_query_rejects_a_bad_priority(self) -> None:
