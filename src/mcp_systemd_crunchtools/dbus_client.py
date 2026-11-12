@@ -28,7 +28,7 @@ from .errors import (
     UnitNotFoundError,
     UnitOperationError,
 )
-from .models import ALLOWED_JOURNAL_PRIORITIES, UNIT_NAME_PATTERN
+from .models import ALLOWED_JOURNAL_PRIORITIES, MAX_JOURNAL_LINES, UNIT_NAME_PATTERN
 
 logger = logging.getLogger(__name__)
 
@@ -647,6 +647,7 @@ async def journal_query(
     if priority is not None and priority not in ALLOWED_JOURNAL_PRIORITIES:
         raise InvalidJournalPriorityError(priority)
 
+    lines = max(1, min(lines, MAX_JOURNAL_LINES))
     args = ["journalctl", "--no-pager", "-n", str(lines)]
     if unit:
         args += ["-u", unit]

@@ -596,6 +596,24 @@ class TestTroubleshooting:
             assert captured[captured.index(flag) + 1] == value
 
     @pytest.mark.asyncio
+    async def test_journal_query_caps_lines(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: list[str] = []
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self) -> tuple[bytes, bytes]:
+                return b"x\n", b""
+
+        async def fake_exec(*args: str, **kwargs: Any) -> FakeProc:
+            captured.extend(args)
+            return FakeProc()
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+        await dbus_client.journal_query(lines=10**9)
+        assert captured[3] == "1000"
+
+    @pytest.mark.asyncio
     async def test_journal_query_rejects_a_bad_priority(self) -> None:
         with pytest.raises(InvalidJournalPriorityError):
             await dbus_client.journal_query(priority="--output=cat")

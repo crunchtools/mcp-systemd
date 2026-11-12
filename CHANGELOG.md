@@ -8,6 +8,11 @@ Entries prior to 2026-09-19 are back-filled from GitHub Release notes (RT #1484)
 
 ## [Unreleased]
 
+### Fixed
+
+- `journal_query` now caps `lines` at 1000 (and floors it at 1), so one call can no
+  longer materialise an unbounded amount of journal output in memory (#59).
+
 ## [0.3.4] - 2026-11-10
 
 ### Fixed
