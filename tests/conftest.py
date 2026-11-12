@@ -159,7 +159,7 @@ class FakeProc:
 
     async def communicate(self) -> tuple[bytes, bytes]:
         out = bytearray()
-        while chunk := await self.stdout.read(65536):
+        while chunk := await self.stdout.read():
             out += chunk
         return bytes(out), b""
 

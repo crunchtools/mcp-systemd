@@ -12,6 +12,7 @@ MAX_JOURNAL_LINES = 1000
 # and Python keeps its heap high-water mark after a large read (#59).
 MAX_JOURNAL_BYTES = 1024 * 1024
 MAX_JOURNAL_STDERR_BYTES = 64 * 1024
+JOURNAL_READ_CHUNK_BYTES = 64 * 1024
 
 # Bare unit name only — no slashes, no leading dot, a recognized unit suffix.
 # This blocks path traversal (../, absolute paths) by construction.

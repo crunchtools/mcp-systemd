@@ -30,6 +30,7 @@ from .errors import (
 )
 from .models import (
     ALLOWED_JOURNAL_PRIORITIES,
+    JOURNAL_READ_CHUNK_BYTES,
     MAX_JOURNAL_BYTES,
     MAX_JOURNAL_LINES,
     MAX_JOURNAL_STDERR_BYTES,
@@ -647,7 +648,7 @@ async def _read_tail(stream: asyncio.StreamReader, limit: int) -> tuple[bytes, b
     """
     buf = bytearray()
     truncated = False
-    while chunk := await stream.read(65536):
+    while chunk := await stream.read(JOURNAL_READ_CHUNK_BYTES):
         buf += chunk
         if len(buf) > 2 * limit:
             del buf[:-limit]
